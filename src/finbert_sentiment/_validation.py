@@ -138,16 +138,12 @@ def ensure_labels(
     for i, item in enumerate(items):
         if isinstance(item, str):
             if item not in LABEL_TO_INDEX:
-                raise ValidationError(
-                    f"{name}[{i}]={item!r} is not one of {LABELS}."
-                )
+                raise ValidationError(f"{name}[{i}]={item!r} is not one of {LABELS}.")
             indices.append(LABEL_TO_INDEX[item])
         elif isinstance(item, (int, np.integer)) and not isinstance(item, bool):
             idx = int(item)
             if not 0 <= idx < N_CLASSES:
-                raise ValidationError(
-                    f"{name}[{i}]={idx} is out of range [0, {N_CLASSES})."
-                )
+                raise ValidationError(f"{name}[{i}]={idx} is out of range [0, {N_CLASSES}).")
             indices.append(idx)
         else:
             raise ValidationError(
@@ -155,9 +151,7 @@ def ensure_labels(
             )
     arr = np.asarray(indices, dtype=np.int64)
     if n_expected is not None and arr.shape[0] != n_expected:
-        raise ValidationError(
-            f"{name} has length {arr.shape[0]} but {n_expected} were expected."
-        )
+        raise ValidationError(f"{name} has length {arr.shape[0]} but {n_expected} were expected.")
     return arr
 
 
@@ -196,13 +190,9 @@ def ensure_score_matrix(
     if arr.ndim != 2:
         raise ValidationError(f"{name} must be 2-D, got ndim={arr.ndim}.")
     if arr.shape[1] != n_classes:
-        raise ValidationError(
-            f"{name} must have {n_classes} columns, got {arr.shape[1]}."
-        )
+        raise ValidationError(f"{name} must have {n_classes} columns, got {arr.shape[1]}.")
     if n_rows is not None and arr.shape[0] != n_rows:
-        raise ValidationError(
-            f"{name} has {arr.shape[0]} rows but {n_rows} were expected."
-        )
+        raise ValidationError(f"{name} has {arr.shape[0]} rows but {n_rows} were expected.")
     if bool(np.isnan(arr).any()):
         raise ValidationError(f"{name} contains NaN values.")
     if bool((arr < 0.0).any()):

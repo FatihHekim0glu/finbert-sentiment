@@ -7,17 +7,38 @@ A from-scratch **DistilBERT fine-tune** for 3-way financial-sentence sentiment
 **honestly** against a class-prior baseline and a Loughran-McDonald-style lexicon
 baseline.
 
-> **Status:** scaffold. The package, public API, optional-dependency split, CI,
-> and the partitioned test suite are in place; the compute kernels are typed
-> stubs being filled in by the pipeline modules.
+> **Status:** live. The full pipeline (loader, dedup, leakage-guarded group
+> split, baselines, evaluation, unified `predict`, the ONNX serve path, and the
+> `run_sentiment` backend entrypoint) is implemented, typed, and tested. **The
+> live demo serves the torch-free lexicon baseline** in this build (`torch` was
+> not available, so no transformer was fine-tuned here — see the dual path
+> below).
+
+## What the live demo actually serves (measured here)
+
+The served model in this build is the **lexicon baseline**, and these are the
+**real, measured** numbers on the locked Financial PhraseBank `sentences_allagree`
+test fold (453 deduplicated sentences, seed `20260618`), committed verbatim in
+`src/finbert_sentiment/artifacts/metrics.json`:
+
+| Model (locked test set) | macro-F1 | note |
+| --- | --- | --- |
+| **Lexicon (served)** | **0.653** (95% CI [0.594, 0.710]) | the live model |
+| Class-prior (majority) floor | 0.254 | trivial floor |
+| DistilBERT fine-tune | ~0.85–0.90 | **published / expected, NOT measured here** |
+
+Accuracy on the same fold is 0.762 — *higher than macro-F1* precisely because the
+neutral class is ~61% of the data, which is exactly why **accuracy alone would be
+dishonest**. `beats_lexicon` is `null` here: with no transformer trained in this
+build, there is nothing to compare against, so no transformer F1 is fabricated.
 
 ## Honest headline (read this first)
 
 - **The headline metric is macro-F1**, reported with per-class precision/recall,
   a confusion matrix, and bootstrap confidence intervals — **never accuracy
-  alone**. The PhraseBank neutral class is ~60% of the data, so a do-nothing
-  majority predictor scores ~0.60 accuracy while contributing nothing; macro-F1
-  exposes that.
+  alone**. The PhraseBank neutral class is ~61% of the data, so a do-nothing
+  majority predictor scores ~0.76 accuracy while contributing nothing; macro-F1
+  exposes that (the class-prior floor is macro-F1 0.25).
 - **The honest floor is two baselines:** a **class-prior** (majority) classifier
   and a torch-free **lexicon** classifier. The transformer is only interesting to
   the extent it beats both, and `beats_lexicon` is a **pure function** of the
@@ -54,6 +75,37 @@ load (PhraseBank) -> dedup (sentence-level) -> seeded stratified GROUP split (lo
    -> inference: unified predict() over transformer-ONNX OR lexicon
    -> evaluation: macro-F1 + per-class P/R/F1 + confusion + bootstrap CIs + McNemar
    -> honest verdict: beats_lexicon (pure function)
+   -> service.run_sentiment(): the backend entrypoint (live predict + committed eval)
+```
+
+The backend calls **one** function. It serves live per-sentence predictions and
+reports the offline-measured eval bundle **loaded verbatim** from the committed
+`metrics.json` (never recomputed per request, since request texts are unlabeled):
+
+```python
+from finbert_sentiment import run_sentiment
+
+result = run_sentiment(
+    ["Quarterly profit rose sharply and beat estimates.",
+     "Losses widened as demand fell and the stock dropped."],
+    model_pref="distilbert",   # falls back to the lexicon if no ONNX artifact
+    seed=20260618,
+)
+result.summary.served_model      # "lexicon" in this build (no torch)
+result.summary.eval_macro_f1     # 0.653 (committed locked-test-set value)
+result.summary.beats_lexicon     # None (lexicon-only build)
+result.predictions               # one {text, label, scores} per sentence
+result.confusion_figure          # Plotly {data, layout} (test-set confusion)
+result.per_class_f1_figure       # Plotly {data, layout} (per-class F1 bar)
+```
+
+The serve path imports **only** `onnxruntime` + `tokenizers` (ONNX backend) or
+nothing heavy at all (lexicon backend) — **never** torch/transformers. Regenerate
+the committed eval bundle with:
+
+```bash
+finbert-sentiment evaluate --model lexicon \
+  --metrics-out src/finbert_sentiment/artifacts/metrics.json
 ```
 
 `src/finbert_sentiment/` is **import-pure**: importing it pulls in no torch /

@@ -59,7 +59,10 @@ def onnx_artifacts_present(artifact_dir: str | Path | None = None) -> bool:
     bool
         Whether the transformer serve artifacts are both present.
     """
-    raise NotImplementedError
+    directory = Path(artifact_dir) if artifact_dir else default_artifact_dir()
+    onnx_ok = (directory / ONNX_ARTIFACT_NAME).is_file()
+    tok_ok = (directory / TOKENIZER_ARTIFACT_NAME).is_file()
+    return onnx_ok and tok_ok
 
 
 class OnnxSentimentSession:
@@ -104,7 +107,39 @@ class OnnxSentimentSession:
         ArtifactError
             If either artifact is missing or initialization fails.
         """
-        raise NotImplementedError
+        if self._session is not None and self._tokenizer is not None:
+            return self
+
+        from finbert_sentiment._exceptions import ArtifactError
+
+        onnx_path = self._artifact_dir / ONNX_ARTIFACT_NAME
+        tokenizer_path = self._artifact_dir / TOKENIZER_ARTIFACT_NAME
+        if not onnx_path.is_file():
+            raise ArtifactError(
+                f"OnnxSentimentSession.load: ONNX artifact not found at {onnx_path}."
+            )
+        if not tokenizer_path.is_file():
+            raise ArtifactError(
+                f"OnnxSentimentSession.load: tokenizer.json not found at {tokenizer_path}."
+            )
+
+        try:
+            import onnxruntime as ort
+            from tokenizers import Tokenizer
+
+            self._session = ort.InferenceSession(
+                str(onnx_path),
+                providers=["CPUExecutionProvider"],
+            )
+            self._tokenizer = Tokenizer.from_file(str(tokenizer_path))
+        except ArtifactError:
+            raise
+        except Exception as exc:  # normalize any onnxruntime/tokenizers error
+            raise ArtifactError(
+                f"OnnxSentimentSession.load: failed to initialize the onnxruntime "
+                f"session or tokenizer from {self._artifact_dir}: {exc}"
+            ) from exc
+        return self
 
     def predict_proba(self, texts: Sequence[str]) -> NDArray[np.float64]:
         """Tokenize, run the ONNX forward pass, and softmax to class scores.
@@ -130,7 +165,57 @@ class OnnxSentimentSession:
         ValidationError
             If ``texts`` fails the batch validation.
         """
-        raise NotImplementedError
+        import numpy as np
+
+        from finbert_sentiment._constants import N_CLASSES
+        from finbert_sentiment._exceptions import ArtifactError
+        from finbert_sentiment._validation import ensure_text_batch
+
+        batch = ensure_text_batch(texts)
+        self.load()
+        session = self._session
+        tokenizer = self._tokenizer
+        if session is None or tokenizer is None:  # pragma: no cover - load() guarantees both
+            raise ArtifactError("OnnxSentimentSession.predict_proba: session not initialized.")
+
+        # Enable right-padding so the batch tokenizes to one rectangular tensor.
+        tokenizer.enable_padding()  # type: ignore[attr-defined]
+        encodings = tokenizer.encode_batch(batch)  # type: ignore[attr-defined]
+        input_ids = np.asarray([enc.ids for enc in encodings], dtype=np.int64)
+        attention_mask = np.asarray([enc.attention_mask for enc in encodings], dtype=np.int64)
+
+        # Build the feed dict by the session's declared input names so the export's
+        # signature (input_ids / attention_mask) is honoured without hard-coding order.
+        feed: dict[str, NDArray[np.int64]] = {}
+        available = {"input_ids": input_ids, "attention_mask": attention_mask}
+        for spec in session.get_inputs():  # type: ignore[attr-defined]
+            if spec.name in available:
+                feed[spec.name] = available[spec.name]
+        if "input_ids" not in feed:
+            raise ArtifactError(
+                "OnnxSentimentSession.predict_proba: exported graph is missing an "
+                "'input_ids' input; cannot run the forward pass."
+            )
+
+        try:
+            outputs = session.run(None, feed)  # type: ignore[attr-defined]
+        except Exception as exc:  # normalize onnxruntime runtime errors
+            raise ArtifactError(
+                f"OnnxSentimentSession.predict_proba: onnxruntime forward pass failed "
+                f"(check the input signature matches the exported graph): {exc}"
+            ) from exc
+
+        logits = np.asarray(outputs[0], dtype=np.float64)
+        if logits.ndim != 2 or logits.shape[1] != N_CLASSES:
+            raise ArtifactError(
+                f"OnnxSentimentSession.predict_proba: expected a "
+                f"(n_texts, {N_CLASSES}) logit matrix, got shape {logits.shape}."
+            )
+        # Numerically stable row-wise softmax to class probabilities.
+        shifted = logits - logits.max(axis=1, keepdims=True)
+        exp = np.exp(shifted)
+        proba: NDArray[np.float64] = exp / exp.sum(axis=1, keepdims=True)
+        return proba
 
     def predict(self, texts: Sequence[str]) -> NDArray[np.int64]:
         """Return the argmax class index per text (thin wrapper over scores).
@@ -145,4 +230,7 @@ class OnnxSentimentSession:
         numpy.ndarray
             A length-``len(texts)`` ``int64`` vector of class indices.
         """
-        raise NotImplementedError
+        import numpy as np
+
+        proba = self.predict_proba(texts)
+        return np.asarray(proba.argmax(axis=1), dtype=np.int64)

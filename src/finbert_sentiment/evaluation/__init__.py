@@ -14,7 +14,9 @@ from __future__ import annotations
 from finbert_sentiment.evaluation.mcnemar import McNemarResult, mcnemar_test
 from finbert_sentiment.evaluation.metrics import (
     ClassificationReport,
+    accuracy,
     bootstrap_macro_f1_ci,
+    classification_report,
     confusion_matrix,
     macro_f1,
     per_class_precision_recall_f1,
@@ -26,7 +28,9 @@ __all__ = [
     "McNemarResult",
     "Verdict",
     "VerdictResult",
+    "accuracy",
     "bootstrap_macro_f1_ci",
+    "classification_report",
     "confusion_matrix",
     "derive_verdict",
     "macro_f1",

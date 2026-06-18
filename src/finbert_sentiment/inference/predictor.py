@@ -96,7 +96,26 @@ class Predictor:
         ArtifactError
             If the transformer backend is selected but its artifacts fail to load.
         """
-        raise NotImplementedError
+        from finbert_sentiment._constants import INDEX_TO_LABEL, LABELS
+        from finbert_sentiment._exceptions import ArtifactError
+        from finbert_sentiment._validation import ensure_text_batch
+
+        batch = ensure_text_batch(texts)
+        session = self._session
+        if session is None:  # pragma: no cover - load_predictor always wires a backend
+            raise ArtifactError(
+                f"Predictor.predict: backend {self._backend!r} has no session attached."
+            )
+
+        # Both backends expose the same ``predict_proba(texts) -> (n, N_CLASSES)``
+        # row-stochastic interface, so dispatch is uniform.
+        proba = session.predict_proba(batch)  # type: ignore[attr-defined]
+        predictions: list[Prediction] = []
+        for text, row in zip(batch, proba, strict=True):
+            idx = int(row.argmax())
+            scores = {label: float(row[i]) for i, label in enumerate(LABELS)}
+            predictions.append(Prediction(text=text, label=INDEX_TO_LABEL[idx], scores=scores))
+        return predictions
 
 
 def load_predictor(
@@ -124,4 +143,13 @@ def load_predictor(
     Predictor
         A predictor bound to the resolved backend.
     """
-    raise NotImplementedError
+    from finbert_sentiment.baselines.lexicon import LexiconClassifier
+    from finbert_sentiment.inference.onnx_session import (
+        OnnxSentimentSession,
+        onnx_artifacts_present,
+    )
+
+    if requested == "distilbert" and onnx_artifacts_present(artifact_dir):
+        session = OnnxSentimentSession(artifact_dir)
+        return Predictor("distilbert-onnx", session=session)
+    return Predictor("lexicon", session=LexiconClassifier())

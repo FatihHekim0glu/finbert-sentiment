@@ -72,6 +72,7 @@ def test_submodules_import_pure() -> None:
         "import finbert_sentiment.model  # lazy torch — must still be import-pure\n"
         "import finbert_sentiment.plots\n"
         "import finbert_sentiment.cli\n"
+        "import finbert_sentiment.service  # the backend entrypoint — import-pure\n"
         f"forbidden = {FORBIDDEN_AT_IMPORT!r}\n"
         "leaked = sorted(m for m in forbidden if m in sys.modules)\n"
         "assert not leaked, f'heavy modules leaked at import: {leaked}'\n"

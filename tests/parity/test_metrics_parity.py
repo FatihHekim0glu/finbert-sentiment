@@ -2,35 +2,142 @@
 
 These pin our hand-rolled metric kernels to ``sklearn.metrics`` to 1e-10 and (when
 the ``[train]`` extra produced a model) the ONNX logits to the torch model to
-1e-3. They are skipped until the corresponding kernels are implemented by the
-``evaluation`` / ``model`` modules.
+1e-3. The metric-parity tests run today against sklearn; the ONNX-vs-torch test
+stays skipped until the ``[train]`` DistilBERT fine-tune + export lands.
 """
 
 from __future__ import annotations
 
+import numpy as np
 import pytest
+from sklearn.metrics import (
+    confusion_matrix as sk_confusion_matrix,
+)
+from sklearn.metrics import (
+    f1_score as sk_f1_score,
+)
+from sklearn.metrics import (
+    precision_recall_fscore_support as sk_prf,
+)
+
+from finbert_sentiment._constants import N_CLASSES
+from finbert_sentiment._rng import make_rng
+from finbert_sentiment.evaluation.metrics import (
+    confusion_matrix,
+    macro_f1,
+    per_class_precision_recall_f1,
+)
 
 pytestmark = pytest.mark.parity
 
-_PENDING = "pending implementation of finbert_sentiment.evaluation.metrics"
+_LABELS = list(range(N_CLASSES))
 
 
-@pytest.mark.skip(reason=_PENDING)
-def test_macro_f1_matches_sklearn() -> None:
+def _random_pair(seed: int, n: int) -> tuple[np.ndarray, np.ndarray]:
+    """A reproducible random ``(y_true, y_pred)`` pair over the 3-way label space."""
+    rng = make_rng(seed)
+    y_true = rng.integers(0, N_CLASSES, size=n)
+    y_pred = rng.integers(0, N_CLASSES, size=n)
+    return y_true, y_pred
+
+
+# A spread of deterministic scenarios, including ones where a class is never
+# predicted / never present (exercising the zero_division=0 branch) and a
+# perfect-prediction case.
+_SCENARIOS: tuple[tuple[list[int], list[int]], ...] = (
+    # perfect predictions
+    ([0, 1, 2, 0, 1, 2], [0, 1, 2, 0, 1, 2]),
+    # class 2 never predicted (zero-division in precision for class 2)
+    ([0, 1, 2, 2, 1, 0], [0, 1, 0, 1, 1, 0]),
+    # class 0 never present in y_true (zero-division in recall for class 0)
+    ([1, 1, 2, 2, 1, 2], [0, 1, 2, 1, 1, 0]),
+    # everything predicted as the majority neutral class
+    ([0, 1, 2, 0, 1, 2, 1, 1], [1, 1, 1, 1, 1, 1, 1, 1]),
+    # all wrong
+    ([0, 0, 0], [1, 1, 1]),
+)
+
+
+@pytest.mark.parametrize("y_true,y_pred", _SCENARIOS)
+def test_macro_f1_matches_sklearn(y_true: list[int], y_pred: list[int]) -> None:
     """``macro_f1`` matches ``sklearn.metrics.f1_score(average='macro')`` to 1e-10."""
-    raise AssertionError("implement against sklearn once metrics.macro_f1 lands")
+    ours = macro_f1(y_true, y_pred)
+    ref = float(sk_f1_score(y_true, y_pred, labels=_LABELS, average="macro", zero_division=0))
+    assert abs(ours - ref) < 1e-10
 
 
-@pytest.mark.skip(reason=_PENDING)
-def test_per_class_prf_matches_sklearn() -> None:
+@pytest.mark.parametrize("seed", [1, 7, 42, 20260618])
+def test_macro_f1_matches_sklearn_random(seed: int) -> None:
+    """Random batches: macro-F1 matches sklearn to 1e-10."""
+    y_true, y_pred = _random_pair(seed, n=200)
+    ours = macro_f1(y_true, y_pred)
+    ref = float(sk_f1_score(y_true, y_pred, labels=_LABELS, average="macro", zero_division=0))
+    assert abs(ours - ref) < 1e-10
+
+
+@pytest.mark.parametrize("y_true,y_pred", _SCENARIOS)
+def test_per_class_prf_matches_sklearn(y_true: list[int], y_pred: list[int]) -> None:
     """Per-class precision/recall/F1 match sklearn's per-class report to 1e-10."""
-    raise AssertionError("implement against sklearn once metrics land")
+    p, r, f = per_class_precision_recall_f1(y_true, y_pred)
+    ref_p, ref_r, ref_f, _ = sk_prf(y_true, y_pred, labels=_LABELS, average=None, zero_division=0)
+    np.testing.assert_allclose(p, ref_p, atol=1e-10, rtol=0.0)
+    np.testing.assert_allclose(r, ref_r, atol=1e-10, rtol=0.0)
+    np.testing.assert_allclose(f, ref_f, atol=1e-10, rtol=0.0)
 
 
-@pytest.mark.skip(reason=_PENDING)
-def test_confusion_matrix_matches_sklearn() -> None:
+@pytest.mark.parametrize("seed", [3, 11, 99])
+def test_per_class_prf_matches_sklearn_random(seed: int) -> None:
+    """Random batches: per-class P/R/F1 match sklearn to 1e-10."""
+    y_true, y_pred = _random_pair(seed, n=150)
+    p, r, f = per_class_precision_recall_f1(y_true, y_pred)
+    ref_p, ref_r, ref_f, _ = sk_prf(y_true, y_pred, labels=_LABELS, average=None, zero_division=0)
+    np.testing.assert_allclose(p, ref_p, atol=1e-10, rtol=0.0)
+    np.testing.assert_allclose(r, ref_r, atol=1e-10, rtol=0.0)
+    np.testing.assert_allclose(f, ref_f, atol=1e-10, rtol=0.0)
+
+
+@pytest.mark.parametrize("y_true,y_pred", _SCENARIOS)
+def test_confusion_matrix_matches_sklearn(y_true: list[int], y_pred: list[int]) -> None:
     """``confusion_matrix`` matches ``sklearn.metrics.confusion_matrix`` exactly."""
-    raise AssertionError("implement against sklearn once metrics land")
+    ours = confusion_matrix(y_true, y_pred)
+    ref = sk_confusion_matrix(y_true, y_pred, labels=_LABELS)
+    np.testing.assert_array_equal(ours, ref)
+
+
+@pytest.mark.parametrize("seed", [5, 13, 21])
+def test_confusion_matrix_matches_sklearn_random(seed: int) -> None:
+    """Random batches: confusion matrix matches sklearn exactly."""
+    y_true, y_pred = _random_pair(seed, n=300)
+    ours = confusion_matrix(y_true, y_pred)
+    ref = sk_confusion_matrix(y_true, y_pred, labels=_LABELS)
+    np.testing.assert_array_equal(ours, ref)
+
+
+def test_confusion_matrix_row_col_semantics() -> None:
+    """Rows index the true class, columns the predicted class (sklearn convention)."""
+    # two true-0 examples both predicted as class 1 -> C[0, 1] == 2
+    cm = confusion_matrix([0, 0], [1, 1])
+    assert int(cm[0, 1]) == 2
+    assert int(cm[0, 0]) == 0
+
+
+@pytest.mark.parametrize("y_true,y_pred", _SCENARIOS)
+def test_macro_f1_is_mean_of_per_class_f1(y_true: list[int], y_pred: list[int]) -> None:
+    """macro-F1 equals the unweighted mean of the per-class F1 vector."""
+    _, _, f = per_class_precision_recall_f1(y_true, y_pred)
+    assert abs(macro_f1(y_true, y_pred) - float(np.mean(f))) < 1e-12
+
+
+def test_string_labels_match_int_labels() -> None:
+    """String class names and integer indices yield identical metrics."""
+    str_true = ["negative", "neutral", "positive", "neutral"]
+    str_pred = ["negative", "positive", "positive", "neutral"]
+    int_true = [0, 1, 2, 1]
+    int_pred = [0, 2, 2, 1]
+    assert abs(macro_f1(str_true, str_pred) - macro_f1(int_true, int_pred)) < 1e-12
+    np.testing.assert_array_equal(
+        confusion_matrix(str_true, str_pred), confusion_matrix(int_true, int_pred)
+    )
 
 
 @pytest.mark.train

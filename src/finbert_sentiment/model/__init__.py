@@ -9,13 +9,28 @@ these modules. Importing this subpackage has no side effects.
 
 from __future__ import annotations
 
-from finbert_sentiment.model.export import ExportResult, export_to_onnx
-from finbert_sentiment.model.train import TrainConfig, TrainResult, train_distilbert
+from finbert_sentiment.model.export import (
+    ExportResult,
+    export_available,
+    export_to_onnx,
+    write_metrics_json,
+)
+from finbert_sentiment.model.train import (
+    TrainConfig,
+    TrainResult,
+    build_label_arrays,
+    train_available,
+    train_distilbert,
+)
 
 __all__ = [
     "ExportResult",
     "TrainConfig",
     "TrainResult",
+    "build_label_arrays",
+    "export_available",
     "export_to_onnx",
+    "train_available",
     "train_distilbert",
+    "write_metrics_json",
 ]

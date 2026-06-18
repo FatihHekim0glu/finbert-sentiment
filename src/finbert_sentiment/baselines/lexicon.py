@@ -14,14 +14,22 @@ Importing this module has no side effects.
 
 from __future__ import annotations
 
+import re
 from dataclasses import asdict, dataclass, field
 from typing import TYPE_CHECKING, Any
+
+import numpy as np
+
+from finbert_sentiment._validation import ensure_text_batch
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    import numpy as np
     from numpy.typing import NDArray
+
+#: Tokenizer: split on any run of non-alphanumeric characters. Lowercasing is
+#: applied before matching so the (lowercase) cue-word sets match case-insensitively.
+_TOKEN_RE = re.compile(r"[a-z0-9]+")
 
 #: Positive finance cue words (lowercase stems). Compact LM-style subset.
 LEXICON_POSITIVE: frozenset[str] = frozenset(
@@ -107,7 +115,14 @@ class LexiconClassifier:
 
     def _score_one(self, text: str) -> tuple[int, int]:
         """Return the ``(pos_count, neg_count)`` cue-word counts for one sentence."""
-        raise NotImplementedError
+        pos = 0
+        neg = 0
+        for token in _TOKEN_RE.findall(text.lower()):
+            if token in self.positive:
+                pos += 1
+            if token in self.negative:
+                neg += 1
+        return pos, neg
 
     def predict(self, texts: Sequence[str]) -> NDArray[np.int64]:
         """Classify each text as negative/neutral/positive by net cue tone.
@@ -130,7 +145,17 @@ class LexiconClassifier:
         ValidationError
             If ``texts`` fails the batch validation.
         """
-        raise NotImplementedError
+        batch = ensure_text_batch(texts)
+        out = np.empty(len(batch), dtype=np.int64)
+        for i, text in enumerate(batch):
+            pos, neg = self._score_one(text)
+            if pos > neg:
+                out[i] = 2  # positive
+            elif neg > pos:
+                out[i] = 0  # negative
+            else:
+                out[i] = 1  # neutral
+        return out
 
     def predict_proba(self, texts: Sequence[str]) -> NDArray[np.float64]:
         """Return pseudo-probabilities derived from normalized cue counts.
@@ -149,7 +174,27 @@ class LexiconClassifier:
         numpy.ndarray
             A ``(len(texts), N_CLASSES)`` row-stochastic score matrix.
         """
-        raise NotImplementedError
+        batch = ensure_text_batch(texts)
+        # Pseudo-logits ordered (negative, neutral, positive), built from the
+        # signed cue difference ``d = pos - neg`` so the row argmax is provably
+        # identical to :meth:`predict`:
+        #   positive logit = +d, negative logit = -d, neutral logit = bias.
+        # The neutral bias lies in ``(0, 1)``; since cue counts are integers the
+        # smallest non-tie ``|d|`` is 1 > bias, so positive/negative win whenever
+        # ``d != 0`` and neutral wins exactly on the tie ``d == 0`` (incl. no cues).
+        bias = 0.5
+        logits = np.empty((len(batch), 3), dtype=np.float64)
+        for i, text in enumerate(batch):
+            pos, neg = self._score_one(text)
+            d = float(pos - neg)
+            logits[i, 0] = -d
+            logits[i, 1] = bias
+            logits[i, 2] = d
+        # Numerically stable row-wise softmax.
+        shifted = logits - logits.max(axis=1, keepdims=True)
+        exp = np.exp(shifted)
+        proba: NDArray[np.float64] = exp / exp.sum(axis=1, keepdims=True)
+        return proba
 
     def to_dict(self) -> dict[str, Any]:
         """Return a plain, JSON-serializable ``dict`` (word sets as sorted lists)."""

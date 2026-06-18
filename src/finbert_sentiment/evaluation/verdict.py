@@ -17,6 +17,8 @@ from dataclasses import asdict, dataclass
 from enum import StrEnum
 from typing import Any
 
+from finbert_sentiment._exceptions import ValidationError
+
 
 class Verdict(StrEnum):
     """Possible headline verdicts for the model-vs-lexicon comparison.
@@ -118,4 +120,62 @@ def derive_verdict(
         If ``lexicon_macro_f1`` is outside ``[0, 1]``, or (when a transformer is
         present) ``model_macro_f1`` / ``mcnemar_p_value`` are out of range.
     """
-    raise NotImplementedError
+    if not 0.0 <= lexicon_macro_f1 <= 1.0:
+        raise ValidationError(f"lexicon_macro_f1 must be in [0, 1], got {lexicon_macro_f1}.")
+    if not 0.0 < alpha < 1.0:
+        raise ValidationError(f"alpha must be in (0, 1), got {alpha}.")
+    if not 0.0 <= min_margin <= 1.0:
+        raise ValidationError(f"min_margin must be in [0, 1], got {min_margin}.")
+
+    # Lexicon-only build: nothing to compare against, so beats_lexicon is None.
+    if model_macro_f1 is None:
+        return VerdictResult(
+            verdict=Verdict.LEXICON_ONLY,
+            beats_lexicon=None,
+            rationale=(
+                "No transformer was trained or served in this build; the lexicon "
+                "baseline IS the served model, so there is nothing to compare."
+            ),
+        )
+
+    if not 0.0 <= model_macro_f1 <= 1.0:
+        raise ValidationError(f"model_macro_f1 must be in [0, 1], got {model_macro_f1}.")
+    if mcnemar_p_value is None:
+        raise ValidationError("mcnemar_p_value is required when model_macro_f1 is provided.")
+    if not 0.0 <= mcnemar_p_value <= 1.0:
+        raise ValidationError(f"mcnemar_p_value must be in [0, 1], got {mcnemar_p_value}.")
+
+    margin = model_macro_f1 - lexicon_macro_f1
+    clears_margin = model_macro_f1 >= lexicon_macro_f1 + min_margin
+    is_significant = mcnemar_p_value < alpha
+
+    if clears_margin and is_significant:
+        return VerdictResult(
+            verdict=Verdict.MODEL_BEATS_LEXICON,
+            beats_lexicon=True,
+            rationale=(
+                f"Model macro-F1 {model_macro_f1:.4f} exceeds the lexicon's "
+                f"{lexicon_macro_f1:.4f} by {margin:.4f} (>= margin {min_margin}) "
+                f"and McNemar p={mcnemar_p_value:.4g} < alpha={alpha}."
+            ),
+        )
+
+    if not clears_margin and not is_significant:
+        reason = (
+            f"margin {margin:.4f} < required {min_margin} and McNemar "
+            f"p={mcnemar_p_value:.4g} >= alpha={alpha}"
+        )
+    elif not clears_margin:
+        reason = (
+            f"margin {margin:.4f} < required {min_margin} (McNemar was significant, "
+            f"p={mcnemar_p_value:.4g})"
+        )
+    else:
+        reason = (
+            f"McNemar p={mcnemar_p_value:.4g} >= alpha={alpha} (margin {margin:.4f} was sufficient)"
+        )
+    return VerdictResult(
+        verdict=Verdict.NO_SIGNIFICANT_DIFFERENCE,
+        beats_lexicon=False,
+        rationale=f"No significant improvement over the lexicon: {reason}.",
+    )

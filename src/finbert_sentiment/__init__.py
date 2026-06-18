@@ -73,6 +73,13 @@ from finbert_sentiment.evaluation import (
 )
 from finbert_sentiment.inference import Prediction, Predictor, load_predictor
 from finbert_sentiment.plots import confusion_matrix_figure, per_class_f1_figure
+from finbert_sentiment.service import (
+    SentimentResult,
+    SentimentSummary,
+    build_evaluation_figures,
+    load_committed_metrics,
+    run_sentiment,
+)
 
 __version__ = "0.1.0"
 
@@ -99,12 +106,15 @@ __all__ = [
     "Prediction",
     "Predictor",
     "RunManifest",
+    "SentimentResult",
+    "SentimentSummary",
     "SplitIndices",
     "ValidationError",
     "Verdict",
     "VerdictResult",
     "__version__",
     "bootstrap_macro_f1_ci",
+    "build_evaluation_figures",
     "config_hash",
     "confusion_matrix",
     "confusion_matrix_figure",
@@ -113,6 +123,7 @@ __all__ = [
     "ensure_labels",
     "ensure_score_matrix",
     "ensure_text_batch",
+    "load_committed_metrics",
     "load_phrasebank",
     "load_predictor",
     "macro_f1",
@@ -121,6 +132,7 @@ __all__ = [
     "normalize_sentence",
     "per_class_f1_figure",
     "per_class_precision_recall_f1",
+    "run_sentiment",
     "sample_dataset",
     "spawn_substreams",
     "stratified_group_split",

@@ -15,12 +15,14 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from typing import TYPE_CHECKING, Any
 
+import numpy as np
+
 from finbert_sentiment._constants import N_CLASSES
+from finbert_sentiment._validation import ensure_labels, ensure_text_batch
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    import numpy as np
     from numpy.typing import NDArray
 
 
@@ -61,7 +63,12 @@ class ClassPriorClassifier:
         ValidationError
             If ``labels`` is empty or contains out-of-range indices.
         """
-        raise NotImplementedError
+        arr = ensure_labels(labels)
+        counts = np.bincount(arr, minlength=N_CLASSES).astype(np.float64)
+        prior = counts / counts.sum()
+        # ``argmax`` breaks ties toward the lowest index, which is deterministic.
+        majority = int(np.argmax(counts))
+        return cls(prior=tuple(float(p) for p in prior), majority_index=majority)
 
     def predict(self, texts: Sequence[str]) -> NDArray[np.int64]:
         """Return the majority class index for every input text (ignores content).
@@ -76,7 +83,8 @@ class ClassPriorClassifier:
         numpy.ndarray
             A length-``len(texts)`` ``int64`` vector of the majority index.
         """
-        raise NotImplementedError
+        batch = ensure_text_batch(texts)
+        return np.full(len(batch), self.majority_index, dtype=np.int64)
 
     def predict_proba(self, texts: Sequence[str]) -> NDArray[np.float64]:
         """Return the (broadcast) train prior as the score for every input.
@@ -91,7 +99,9 @@ class ClassPriorClassifier:
         numpy.ndarray
             A ``(len(texts), N_CLASSES)`` matrix; every row equals ``prior``.
         """
-        raise NotImplementedError
+        batch = ensure_text_batch(texts)
+        row = np.asarray(self.prior, dtype=np.float64)
+        return np.tile(row, (len(batch), 1))
 
     def to_dict(self) -> dict[str, Any]:
         """Return a plain, JSON-serializable ``dict`` of this classifier."""
