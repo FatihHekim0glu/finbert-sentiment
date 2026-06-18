@@ -1,0 +1,63 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "finbert-sentiment: From-scratch DistilBERT financial-sentence sentiment, benchmarked honestly against baselines"
+abstract: >-
+  A pure, typed Python pipeline for 3-way financial-sentence sentiment
+  (negative / neutral / positive) on the Financial PhraseBank (Malo et al. 2014,
+  sentences_allagree). A from-scratch DistilBERT fine-tune is exported to int8
+  ONNX and served torch-free via onnxruntime, benchmarked honestly with macro-F1,
+  per-class precision/recall, a confusion matrix, and bootstrap confidence
+  intervals against a class-prior floor and a Loughran-McDonald-style lexicon
+  baseline. The split is grouped by normalized-sentence hash so near-duplicate
+  sentences never straddle train/test. Sentiment is treated as a text label, not
+  a tradable signal; walk-forward/purge/Deflated-Sharpe do not apply (no return
+  series). A torch-free lexicon model is the always-available served fallback.
+type: software
+version: 0.1.0
+date-released: "2026-06-18"
+license: MIT
+repository-code: "https://github.com/FatihHekim0glu/finbert-sentiment"
+url: "https://fatihhekimoglu.com"
+authors:
+  - family-names: "FatihHekim0glu"
+keywords:
+  - financial-sentiment
+  - financial-phrasebank
+  - distilbert
+  - onnx
+  - macro-f1
+  - natural-language-processing
+references:
+  - type: article
+    title: "Good debt or bad debt: Detecting semantic orientations in economic texts"
+    authors:
+      - family-names: "Malo"
+        given-names: "Pekka"
+      - family-names: "Sinha"
+        given-names: "Ankur"
+      - family-names: "Korhonen"
+        given-names: "Pekka"
+      - family-names: "Wallenius"
+        given-names: "Jyrki"
+      - family-names: "Takala"
+        given-names: "Pyry"
+    journal: "Journal of the Association for Information Science and Technology"
+    volume: 65
+    issue: 4
+    year: 2014
+  - type: article
+    title: "FinBERT: Financial Sentiment Analysis with Pre-trained Language Models"
+    authors:
+      - family-names: "Araci"
+        given-names: "Dogu"
+    year: 2019
+    notes: "ProsusAI/finbert; arXiv:1908.10063"
+  - type: article
+    title: "Note on the sampling error of the difference between correlated proportions or percentages"
+    authors:
+      - family-names: "McNemar"
+        given-names: "Quinn"
+    journal: "Psychometrika"
+    volume: 12
+    issue: 2
+    year: 1947

@@ -48,6 +48,28 @@ also learns the minority classes well; on the lexicon baseline accuracy (0.762) 
 > [ProsusAI/finbert](https://huggingface.co/ProsusAI/finbert) range is retained in
 > `metrics.json` only as external context.
 
+## Validation
+
+The numbers above are trusted because the machinery that produces them is checked
+against independent references and the split is proven leakage-free. These checks
+run in CI (the transformer-only parity check runs offline under the `[train]`
+extra):
+
+| Check | What it asserts | Tolerance / result |
+| --- | --- | --- |
+| Metric parity | macro-F1, per-class precision/recall vs `sklearn.metrics` on identical inputs | `1e-10` |
+| Group-split no-overlap | no normalized-sentence hash appears in more than one fold (`assert_no_group_overlap`) | exact (zero overlap), asserted on the shipped split and Hypothesis inputs |
+| ONNX parity | exported int8-ONNX logits vs the torch model | `1e-3` (runs only when `[train]` produced a model) |
+| Determinism | same seed → same split, baselines, and bootstrap CI | byte-stable |
+| Verdict safety | `beats_lexicon` cannot read `True` without margin **and** McNemar significance | truth-table unit-tested |
+| Import purity | importing the package triggers no torch/transformers/onnxruntime/network/I/O | subprocess-tested |
+
+The split is a **seeded, class-stratified split grouped by normalized-sentence
+hash** (lossy near-duplicates that survive dedup move as a unit), so a sentence in
+the locked test fold shares no near-duplicate with training — the dominant
+PhraseBank leakage risk. See [`docs/DESIGN.md`](docs/DESIGN.md) and the ADRs in
+[`docs/decisions/`](docs/decisions/) for the full rationale.
+
 ## Honest headline (read this first)
 
 - **The headline metric is macro-F1**, reported with per-class precision/recall,
@@ -83,6 +105,11 @@ reason: we classify sentences, not a stock universe, so the point-in-time
 universe builder is correctly unused.
 
 ## Architecture
+
+For the full layering, data flow, invariants, and testing strategy see
+[`docs/DESIGN.md`](docs/DESIGN.md); for the contested decisions (group-split,
+macro-F1-not-accuracy, ONNX-or-lexicon serve, no-walk-forward, no-fabricated-metrics)
+see the ADRs in [`docs/decisions/`](docs/decisions/).
 
 ```
 load (PhraseBank) -> dedup (sentence-level) -> seeded stratified GROUP split (locked test)

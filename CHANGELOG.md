@@ -4,7 +4,12 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.1.0] - 2026-06-18
+
+First tagged release. An import-pure, strictly-typed pipeline that classifies
+financial sentences into negative / neutral / positive, serves a measured
+DistilBERT fine-tune over ONNX (with a torch-free lexicon fallback), and reports
+macro-F1 honestly against class-prior and lexicon baselines.
 
 ### Added
 
@@ -44,3 +49,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   path) and the no-AI-attribution commit guard.
 - Partitioned test suite (`unit`/`parity`/`property`/`regression`/`integration`)
   with seeded, offline fixtures (no network, no torch).
+
+### Docs
+
+- `README.md`: honest macro-F1 headline (which model the live demo serves, the
+  baselines floor, a Validation table, the "why walk-forward / purge / DSR do not
+  apply" note, Limitations, a Reproduce block, and references).
+- `docs/DESIGN.md`: layering, data flow from PhraseBank sentence to served
+  prediction, the core invariants, and the testing strategy.
+- `docs/decisions/`: ADRs 0001 (group-split by sentence hash), 0002 (macro-F1 not
+  accuracy), 0003 (ONNX-or-lexicon serve, no torch), 0004 (no walk-forward —
+  category error), 0005 (no fabricated metrics).
+- `CITATION.cff` with the Financial PhraseBank (Malo et al. 2014), FinBERT
+  (Araci 2019 / ProsusAI), and McNemar (1947) references.
+
+[0.1.0]: https://github.com/FatihHekim0glu/finbert-sentiment/releases/tag/v0.1.0
