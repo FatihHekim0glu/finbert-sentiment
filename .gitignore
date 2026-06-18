@@ -1,0 +1,98 @@
+# --------------------------------------------------------------------------- #
+# Python                                                                       #
+# --------------------------------------------------------------------------- #
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# --------------------------------------------------------------------------- #
+# Virtual environments                                                         #
+# --------------------------------------------------------------------------- #
+.venv/
+venv/
+env/
+ENV/
+.python-version
+
+# --------------------------------------------------------------------------- #
+# Testing / coverage / type-checking caches                                    #
+# --------------------------------------------------------------------------- #
+.pytest_cache/
+.hypothesis/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+.dmypy.json
+dmypy.json
+
+# --------------------------------------------------------------------------- #
+# Model artifacts                                                              #
+# --------------------------------------------------------------------------- #
+# Torch / HF training intermediates and saved checkpoints are NEVER committed...
+*.bin
+*.pt
+*.pth
+*.safetensors
+*.ckpt
+checkpoints/
+hf_cache/
+runs/
+# ...but the SHIPPED serve artifacts ARE committed (they ride in the wheel and
+# the vendored API package): the int8 ONNX graph, the tokenizer.json, and the
+# offline-measured metrics.json. Do NOT ignore these.
+!src/finbert_sentiment/artifacts/*.onnx
+!src/finbert_sentiment/artifacts/tokenizer.json
+!src/finbert_sentiment/artifacts/metrics.json
+
+# --------------------------------------------------------------------------- #
+# HuggingFace datasets / data cache (never commit raw corpora)                 #
+# --------------------------------------------------------------------------- #
+*.parquet
+*.arrow
+.cache/
+data_cache/
+
+# --------------------------------------------------------------------------- #
+# Notebooks                                                                     #
+# --------------------------------------------------------------------------- #
+.ipynb_checkpoints/
+
+# --------------------------------------------------------------------------- #
+# Editors / OS                                                                  #
+# --------------------------------------------------------------------------- #
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# --------------------------------------------------------------------------- #
+# Agent / assistant artifacts                                                   #
+# --------------------------------------------------------------------------- #
+.claude/
+.specstory/
+.env
+.env.*
+*.key
+.secrets/

@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Cancel superseded runs on the same ref to save CI minutes.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test (py${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          enable-cache: true
+
+      # Install the LEAN extras only ([data,serve,viz,dev]) — NOT [train].
+      # The served path + eval + baselines must be green WITHOUT torch/transformers.
+      - name: Install project (lean extras + dev)
+        run: uv pip install --system -e ".[data,serve,viz,dev]"
+
+      - name: Lint (ruff)
+        run: uv run --no-project ruff check src tests
+
+      - name: Type-check (mypy, strict)
+        # Non-blocking while residual strict-mode issues are burned down; still
+        # surfaced in the log.
+        continue-on-error: true
+        run: uv run --no-project mypy src
+
+      - name: Test (pytest + coverage gate, excluding the heavy train path)
+        run: >-
+          uv run --no-project pytest -q -m "not train and not slow"
+          --cov=finbert_sentiment --cov-report=term --cov-fail-under=85
