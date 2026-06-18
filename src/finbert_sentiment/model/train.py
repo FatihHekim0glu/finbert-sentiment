@@ -308,8 +308,9 @@ def train_distilbert(
             logits = eval_pred.predictions
             if isinstance(logits, tuple):
                 logits = logits[0]
-            preds = np.asarray(logits).argmax(axis=-1)
-            return {"macro_f1": _compute_macro_f1(eval_pred.label_ids, preds)}
+            preds: list[int] = [int(v) for v in np.asarray(logits).argmax(axis=-1).tolist()]
+            label_ids: list[int] = [int(v) for v in np.asarray(eval_pred.label_ids).tolist()]
+            return {"macro_f1": _compute_macro_f1(label_ids, preds)}
 
         args = TrainingArguments(
             output_dir=output_dir,
@@ -330,7 +331,9 @@ def train_distilbert(
             disable_tqdm=True,
         )
 
-        callbacks = []
+        from transformers import TrainerCallback
+
+        callbacks: list[TrainerCallback] = []
         if cfg.early_stopping_patience > 0:
             callbacks.append(
                 EarlyStoppingCallback(early_stopping_patience=cfg.early_stopping_patience)

@@ -19,6 +19,7 @@ green torch-free.
 
 from __future__ import annotations
 
+import subprocess
 import sys
 
 import pytest
@@ -48,26 +49,62 @@ from finbert_sentiment.model.train import _compute_macro_f1
 from tests.conftest import PHRASEBANK_SAMPLE  # reuse the offline corpus
 
 
+def _assert_pure_subprocess(body: str) -> None:
+    """Run ``body`` in a clean Python subprocess and assert no heavy deps leaked.
+
+    Import purity is a property of the IMPORT GRAPH, not of a particular test
+    ordering. Asserting ``'torch' not in sys.modules`` in-process is fragile: a
+    ``[train]``-marked test that legitimately imports torch earlier in the SAME
+    pytest process would make a later in-process assertion fail spuriously. Running
+    the snippet in a fresh interpreter makes the guarantee deterministic regardless
+    of suite order (the same pattern as ``tests/integration/test_import_purity.py``).
+    """
+    code = (
+        "import sys\n"
+        f"{body}\n"
+        "leaked = sorted(m for m in ('torch', 'transformers', 'onnx') if m in sys.modules)\n"
+        "assert not leaked, f'heavy modules leaked: {leaked}'\n"
+        "print('OK')\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, (
+        f"purity subprocess failed:\nstdout={result.stdout}\nstderr={result.stderr}"
+    )
+    assert "OK" in result.stdout
+
+
 # --------------------------------------------------------------------------- #
 # Import purity: importing the train/export modules pulls in NO heavy framework #
 # --------------------------------------------------------------------------- #
 @pytest.mark.unit
 def test_importing_model_does_not_import_torch_transformers_onnx() -> None:
-    """``finbert_sentiment.model`` (already imported) brought in no torch/transformers/onnx."""
-    for forbidden in ("torch", "transformers", "onnx"):
-        assert forbidden not in sys.modules, (
-            f"{forbidden} was imported at module load — must be lazy inside functions."
-        )
+    """Importing ``finbert_sentiment.model`` brings in no torch/transformers/onnx.
+
+    Checked in a clean subprocess so the result is independent of whether a
+    ``[train]``-marked test imported torch earlier in this pytest process.
+    """
+    _assert_pure_subprocess("import finbert_sentiment.model")
 
 
 @pytest.mark.unit
 def test_train_export_availability_probes_are_torch_free() -> None:
     """The availability probes return a bool without importing the heavy deps."""
+    # Returning a bool is order-independent and safe to check in-process.
     assert isinstance(train_available(), bool)
     assert isinstance(export_available(), bool)
-    # Probing must not have side-loaded torch/transformers/onnx.
-    for forbidden in ("torch", "transformers", "onnx"):
-        assert forbidden not in sys.modules
+    # Probing must not side-load torch/transformers/onnx — checked in a clean
+    # subprocess so it holds regardless of suite order.
+    _assert_pure_subprocess(
+        "from finbert_sentiment.model.train import train_available\n"
+        "from finbert_sentiment.model.export import export_available\n"
+        "train_available()\n"
+        "export_available()"
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -201,7 +238,11 @@ def test_build_label_arrays_slices_train_and_val_only(phrasebank_sample: object)
 
 @pytest.mark.unit
 def test_build_label_arrays_torch_free() -> None:
-    """``build_label_arrays`` runs without importing torch/transformers/onnx."""
+    """``build_label_arrays`` runs without importing torch/transformers/onnx.
+
+    The torch-free guarantee is asserted in a clean subprocess (order-independent);
+    the in-process call below also exercises the slicing/leakage logic for coverage.
+    """
     from finbert_sentiment.data.load import sample_dataset
 
     texts = [t for t, _ in PHRASEBANK_SAMPLE]
@@ -209,8 +250,16 @@ def test_build_label_arrays_torch_free() -> None:
     ds = sample_dataset(texts, labels)
     split = _sample_split(ds)
     build_label_arrays(ds, split)
-    for forbidden in ("torch", "transformers", "onnx"):
-        assert forbidden not in sys.modules
+    _assert_pure_subprocess(
+        "from finbert_sentiment.data.load import sample_dataset\n"
+        "from finbert_sentiment.data.split import stratified_group_split\n"
+        "from finbert_sentiment.model.train import build_label_arrays\n"
+        "texts = [f's{i} word' for i in range(12)]\n"
+        "labels = [i % 3 for i in range(12)]\n"
+        "ds = sample_dataset(texts, labels)\n"
+        "split = stratified_group_split(list(ds.labels), [str(i) for i in range(12)], seed=1)\n"
+        "build_label_arrays(ds, split)"
+    )
 
 
 @pytest.mark.unit

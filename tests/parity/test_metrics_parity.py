@@ -140,8 +140,52 @@ def test_string_labels_match_int_labels() -> None:
     )
 
 
+def _committed_torch_model_dir() -> str | None:
+    """Return the committed serve-artifact dir IFF it holds a saved torch model.
+
+    The fine-tuned ``model.safetensors`` (+ ``config.json``) lives next to the
+    shipped ONNX/tokenizer when ``[train]`` ran locally; it is gitignored (only
+    the ONNX + tokenizer + metrics ship). When absent, the ONNX-vs-torch parity
+    test self-skips — it cannot re-derive torch logits without the saved weights.
+    """
+    import os
+
+    artifacts = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+        "src",
+        "finbert_sentiment",
+        "artifacts",
+    )
+    has_weights = os.path.isfile(os.path.join(artifacts, "model.safetensors"))
+    has_config = os.path.isfile(os.path.join(artifacts, "config.json"))
+    return artifacts if (has_weights and has_config) else None
+
+
 @pytest.mark.train
-@pytest.mark.skip(reason="pending the [train] DistilBERT fine-tune + ONNX export")
-def test_onnx_logits_match_torch() -> None:
-    """Exported ONNX logits match the torch model to 1e-3 (only when [train] ran)."""
-    raise AssertionError("implement once model.train + model.export land")
+@pytest.mark.slow
+@pytest.mark.skipif(
+    _committed_torch_model_dir() is None,
+    reason="requires the saved torch model from a local [train] run (gitignored)",
+)
+def test_onnx_logits_match_torch(tmp_path: object) -> None:  # pragma: no cover - [train]-only
+    """The fp32 ONNX export matches the torch model's logits to 1e-3.
+
+    Re-exports the committed saved torch model to a fresh fp32 ONNX graph and
+    compares onnxruntime logits against the torch forward pass on a fixed probe
+    batch. The export helper measures this max-abs logit diff itself; this test
+    pins it under the 1e-3 tolerance the brief requires (the shipped int8 graph
+    carries extra quantization error and is validated separately by the serve
+    path's score-level checks).
+    """
+    from finbert_sentiment.model.export import export_to_onnx
+
+    model_dir = _committed_torch_model_dir()
+    assert model_dir is not None  # guarded by skipif
+    result = export_to_onnx(
+        model_dir,
+        output_dir=str(tmp_path),  # type: ignore[arg-type]
+        int8=False,
+        opset=14,
+    )
+    assert result.max_logit_abs_diff is not None
+    assert result.max_logit_abs_diff < 1e-3

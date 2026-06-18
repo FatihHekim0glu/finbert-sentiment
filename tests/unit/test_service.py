@@ -121,18 +121,37 @@ def test_default_metrics_path_points_at_artifacts() -> None:
 
 
 def test_committed_metrics_artifact_exists_and_is_consistent() -> None:
-    """The SHIPPED metrics.json loads and is internally consistent (honest bundle)."""
+    """The SHIPPED metrics.json loads and is internally consistent (honest bundle).
+
+    The assertions hold for BOTH shippable builds — the transformer-ONNX build and
+    the torch-free lexicon fallback — by checking the honest INVARIANTS rather than
+    a hard-coded served-model name:
+
+    * the served model is one of the two known backends;
+    * the lexicon clearly beats the class-prior floor;
+    * ``served_model``, ``eval_macro_f1``, ``beats_lexicon``, and the transformer
+      ``measured_in_this_build`` flag are all mutually consistent.
+    """
     metrics = load_committed_metrics()
-    # The live served model is the torch-free lexicon in this build.
-    assert metrics["served_model"] == "lexicon"
-    # eval_macro_f1 equals the lexicon's macro-F1 (the lexicon IS the served model).
-    assert metrics["eval_macro_f1"] == metrics["lexicon_macro_f1"]
-    # The lexicon clearly beats the class-prior floor.
+    served = metrics["served_model"]
+    assert served in {"distilbert-onnx", "lexicon"}
+    # The lexicon baseline always clears the trivial class-prior floor.
     assert metrics["lexicon_macro_f1"] > metrics["class_prior_macro_f1"]
-    # Lexicon-only build: nothing to compare, so beats_lexicon is null.
-    assert metrics["beats_lexicon"] is None
-    # The transformer figure is published, NOT measured in this build.
-    assert metrics["transformer_published_macro_f1"]["measured_in_this_build"] is False
+
+    transformer_measured = metrics["transformer_published_macro_f1"]["measured_in_this_build"]
+    if served == "lexicon":
+        # Lexicon fallback: the lexicon IS the served model, nothing to compare.
+        assert metrics["eval_macro_f1"] == metrics["lexicon_macro_f1"]
+        assert metrics["beats_lexicon"] is None
+        assert transformer_measured is False
+    else:
+        # Transformer-ONNX build: the served macro-F1 is the MEASURED transformer's,
+        # the verdict is a real boolean, and the transformer figure is measured here.
+        assert transformer_measured is True
+        assert isinstance(metrics["beats_lexicon"], bool)
+        # beats_lexicon True iff the served model clears the lexicon by the margin.
+        if metrics["beats_lexicon"]:
+            assert metrics["eval_macro_f1"] > metrics["lexicon_macro_f1"]
 
 
 # --------------------------------------------------------------------------- #

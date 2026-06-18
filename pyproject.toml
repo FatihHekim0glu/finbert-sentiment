@@ -63,6 +63,7 @@ serve = [
 train = [
     "torch>=2.2",
     "transformers>=4.39",
+    "accelerate>=1.1.0",
     "evaluate>=0.4",
     "onnx>=1.16",
 ]

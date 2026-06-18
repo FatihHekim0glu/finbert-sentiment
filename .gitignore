@@ -59,10 +59,20 @@ dmypy.json
 checkpoints/
 hf_cache/
 runs/
+# HF `trainer.save_model()` writes the torch checkpoint, the per-epoch
+# `checkpoint-*/` dirs, and HF model/tokenizer metadata next to the serve
+# artifacts. None of these ship — the lean serve path needs only the int8 ONNX
+# graph, the fast tokenizer.json, and the offline metrics.json. Ignore them here.
+src/finbert_sentiment/artifacts/checkpoint-*/
+src/finbert_sentiment/artifacts/config.json
+src/finbert_sentiment/artifacts/tokenizer_config.json
+src/finbert_sentiment/artifacts/special_tokens_map.json
+src/finbert_sentiment/artifacts/vocab.txt
+src/finbert_sentiment/artifacts/model.onnx
 # ...but the SHIPPED serve artifacts ARE committed (they ride in the wheel and
 # the vendored API package): the int8 ONNX graph, the tokenizer.json, and the
 # offline-measured metrics.json. Do NOT ignore these.
-!src/finbert_sentiment/artifacts/*.onnx
+!src/finbert_sentiment/artifacts/*.int8.onnx
 !src/finbert_sentiment/artifacts/tokenizer.json
 !src/finbert_sentiment/artifacts/metrics.json
 

@@ -8,6 +8,25 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Shipped the measured DistilBERT fine-tune.** Fine-tuned
+  `distilbert-base-uncased` 3-way on the Financial PhraseBank `sentences_allagree`
+  fold (3 epochs, seed `20260618`, early-stop on val macro-F1; best val macro-F1
+  0.933), exported to a dynamic-int8 ONNX graph + `tokenizer.json`, and committed
+  both under `src/finbert_sentiment/artifacts/`. The live demo now serves
+  `distilbert-onnx` through `onnxruntime` + `tokenizers` (no torch in the serve
+  path), falling back to the lexicon automatically when no ONNX artifact exists.
+- **Measured evaluation on the locked test set** (453 deduplicated sentences):
+  served macro-F1 **0.960** (95% CI [0.932, 0.982]), per-class F1
+  0.932 / 0.993 / 0.956, vs lexicon 0.653 and class-prior 0.254. McNemar vs the
+  lexicon p ≈ 1.9e-22 → `beats_lexicon: true` (`measured_in_this_build: true`).
+  `metrics.json` regenerated accordingly.
+- Activated the `[train]`-gated tests (the end-to-end fine-tune + export and the
+  ONNX-vs-torch logit parity check, max abs logit diff < 1e-3); made the
+  import-purity assertions subprocess-isolated so they are order-independent.
+- Forced the legacy TorchScript ONNX exporter (`dynamo=False`) for a stable
+  export signature across torch versions; added `accelerate` to the `[train]`
+  extra (required by the transformers Trainer).
+
 - Project scaffold: import-pure, strictly-typed src-layout package
   `finbert_sentiment` with `py.typed`.
 - Shared infrastructure (validation, constants, typing, exceptions, run

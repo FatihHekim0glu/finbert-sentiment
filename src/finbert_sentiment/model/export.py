@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import importlib.util
 from dataclasses import asdict, dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from finbert_sentiment._constants import LABELS, N_CLASSES
 from finbert_sentiment._exceptions import FinbertSentimentError
@@ -184,7 +184,9 @@ def export_to_onnx(
                 self, input_ids: torch.Tensor, attention_mask: torch.Tensor
             ) -> torch.Tensor:
                 out = self.inner(input_ids=input_ids, attention_mask=attention_mask)
-                return out.logits
+                # ``out.logits`` is ``Any`` (model output is untyped); cast keeps the
+                # signature honest and the line clean whether or not torch stubs exist.
+                return cast("torch.Tensor", out.logits)
 
         wrapped = _LogitsOnly(model)
         wrapped.eval()
@@ -197,6 +199,11 @@ def export_to_onnx(
             INPUT_NAMES[1]: {0: "batch", 1: "sequence"},
             OUTPUT_NAME: {0: "batch"},
         }
+        # Force the legacy TorchScript exporter (``dynamo=False``): it honours the
+        # ``dynamic_axes`` dict and ``input_names``/``output_names`` exactly as
+        # specified and needs no ``onnxscript``. torch >= 2.9 defaults
+        # ``dynamo=True`` (a different dynamic-shapes API), which we deliberately
+        # opt out of so the exported signature stays stable across torch versions.
         torch.onnx.export(
             wrapped,
             (input_ids, attention_mask),
@@ -206,6 +213,7 @@ def export_to_onnx(
             dynamic_axes=dynamic_axes,
             opset_version=opset,
             do_constant_folding=True,
+            dynamo=False,
         )
 
         import onnx

@@ -10,27 +10,43 @@ baseline.
 > **Status:** live. The full pipeline (loader, dedup, leakage-guarded group
 > split, baselines, evaluation, unified `predict`, the ONNX serve path, and the
 > `run_sentiment` backend entrypoint) is implemented, typed, and tested. **The
-> live demo serves the torch-free lexicon baseline** in this build (`torch` was
-> not available, so no transformer was fine-tuned here — see the dual path
-> below).
+> live demo serves the from-scratch DistilBERT fine-tune via ONNX** in this build
+> — it was trained, exported to int8 ONNX, and evaluated here (see the measured
+> numbers below). The torch-free lexicon baseline remains the always-available
+> fallback (the predictor serves it automatically if the ONNX artifact is absent).
 
 ## What the live demo actually serves (measured here)
 
-The served model in this build is the **lexicon baseline**, and these are the
-**real, measured** numbers on the locked Financial PhraseBank `sentences_allagree`
-test fold (453 deduplicated sentences, seed `20260618`), committed verbatim in
-`src/finbert_sentiment/artifacts/metrics.json`:
+The served model in this build is the **DistilBERT fine-tune** (`distilbert-onnx`),
+and these are the **real, measured** numbers on the locked Financial PhraseBank
+`sentences_allagree` test fold (453 deduplicated sentences, seed `20260618`),
+committed verbatim in `src/finbert_sentiment/artifacts/metrics.json`:
 
 | Model (locked test set) | macro-F1 | note |
 | --- | --- | --- |
-| **Lexicon (served)** | **0.653** (95% CI [0.594, 0.710]) | the live model |
+| **DistilBERT fine-tune (served, ONNX int8)** | **0.960** (95% CI [0.932, 0.982]) | the live model, **measured here** |
+| Lexicon baseline | 0.653 (95% CI [0.594, 0.710]) | honest lexical floor |
 | Class-prior (majority) floor | 0.254 | trivial floor |
-| DistilBERT fine-tune | ~0.85–0.90 | **published / expected, NOT measured here** |
 
-Accuracy on the same fold is 0.762 — *higher than macro-F1* precisely because the
-neutral class is ~61% of the data, which is exactly why **accuracy alone would be
-dishonest**. `beats_lexicon` is `null` here: with no transformer trained in this
-build, there is nothing to compare against, so no transformer F1 is fabricated.
+The transformer was fine-tuned from `distilbert-base-uncased` (3 epochs, seed
+`20260618`, early-stop on val macro-F1; best val macro-F1 0.933), exported to a
+dynamic-int8 ONNX graph, and served through `onnxruntime` + `tokenizers` — **no
+torch in the serve path**. Per-class test F1 is negative 0.932 / neutral 0.993 /
+positive 0.956. Against the lexicon, **McNemar's test gives p ≈ 1.9e-22**, so
+`beats_lexicon` is **`True`** (verdict `model_beats_lexicon`): the gap is both
+large (Δmacro-F1 ≈ 0.31) and statistically unambiguous.
+
+Accuracy on the same fold is 0.976 — close to macro-F1 here because the fine-tune
+also learns the minority classes well; on the lexicon baseline accuracy (0.762) is
+*much higher* than its macro-F1 (0.653) precisely because the neutral class is
+~61% of the data, which is exactly why **accuracy alone would be dishonest**.
+
+> The measured 0.960 sits above the ~0.85–0.90 commonly cited for FinBERT-class
+> models. That is consistent with the `sentences_allagree` config being the
+> easiest, highest-annotator-agreement subset of the PhraseBank; it is a real
+> measurement on the locked test fold, not a published figure. The published
+> [ProsusAI/finbert](https://huggingface.co/ProsusAI/finbert) range is retained in
+> `metrics.json` only as external context.
 
 ## Honest headline (read this first)
 
@@ -47,12 +63,12 @@ build, there is nothing to compare against, so no transformer F1 is fabricated.
   anywhere. A live-news demo input, if shown, is labelled "illustrative,
   as-published, no look-ahead guarantee".
 - **A transformer macro-F1 is reported ONLY if it was actually measured in this
-  build.** A from-scratch DistilBERT fine-tune is expected to reach macro-F1
-  ~0.85–0.90 on the `allagree` split (on par with the published
-  [ProsusAI/finbert](https://huggingface.co/ProsusAI/finbert)); where the
-  transformer was not trained here, that figure is cited as **published /
-  expected, not measured in this build**, and the live demo serves the **lexicon
-  baseline** (whose real macro-F1 is the one reported).
+  build.** Here the DistilBERT fine-tune **was** trained, exported to ONNX, and
+  evaluated on the locked test fold, so the reported **0.960** is a real
+  measurement (`measured_in_this_build: true` in `metrics.json`). When the
+  transformer is *not* trained in a given build, the predictor serves the lexicon
+  baseline instead and the transformer figure is cited as **published / expected,
+  not measured** — never fabricated.
 
 ## Why walk-forward / purge / Deflated-Sharpe do **not** apply
 
@@ -91,22 +107,28 @@ result = run_sentiment(
     model_pref="distilbert",   # falls back to the lexicon if no ONNX artifact
     seed=20260618,
 )
-result.summary.served_model      # "lexicon" in this build (no torch)
-result.summary.eval_macro_f1     # 0.653 (committed locked-test-set value)
-result.summary.beats_lexicon     # None (lexicon-only build)
+result.summary.served_model      # "distilbert-onnx" in this build (ONNX, no torch)
+result.summary.eval_macro_f1     # 0.960 (committed locked-test-set value)
+result.summary.beats_lexicon     # True (McNemar p ≈ 1.9e-22 vs the lexicon)
 result.predictions               # one {text, label, scores} per sentence
 result.confusion_figure          # Plotly {data, layout} (test-set confusion)
 result.per_class_f1_figure       # Plotly {data, layout} (per-class F1 bar)
 ```
 
 The serve path imports **only** `onnxruntime` + `tokenizers` (ONNX backend) or
-nothing heavy at all (lexicon backend) — **never** torch/transformers. Regenerate
-the committed eval bundle with:
+nothing heavy at all (lexicon backend) — **never** torch/transformers. Reproduce
+the fine-tune → ONNX export → committed eval bundle with:
 
 ```bash
-finbert-sentiment evaluate --model lexicon \
-  --metrics-out src/finbert_sentiment/artifacts/metrics.json
+uv pip install -e ".[train,serve]"             # heavy: torch + transformers (offline only)
+finbert-sentiment train \
+  --output-dir src/finbert_sentiment/artifacts  # fine-tune + export model.int8.onnx + tokenizer.json
+finbert-sentiment evaluate --model distilbert \
+  --metrics-out src/finbert_sentiment/artifacts/metrics.json   # measured macro-F1 + McNemar
 ```
+
+(With no ONNX artifact present, `--model lexicon` regenerates the lexicon-only
+bundle instead — the torch-free fallback.)
 
 `src/finbert_sentiment/` is **import-pure**: importing it pulls in no torch /
 transformers / onnxruntime / network call — those are imported lazily, behind
@@ -127,8 +149,13 @@ uv pip install -e ".[data,viz,dev]"     # lean dev install (no torch)
   (English), and **neutral-majority**; macro-F1 is the right lens precisely
   because of that class imbalance.
 - Sentiment is a **text label**, not alpha — see above.
-- Where the transformer was not fine-tuned in this build, its macro-F1 is the
-  **published** ProsusAI/finbert figure, **not** a measurement from this repo.
+- The measured **0.960** macro-F1 is on the `sentences_allagree` config — the
+  highest-agreement, *easiest* PhraseBank subset. It is **not** a claim about
+  noisier text (headlines, filings, social posts) or the lower-agreement
+  `sentences_75agree`/`50agree` configs, where macro-F1 would be lower.
+- Where the transformer is **not** fine-tuned in a given build, the predictor
+  serves the lexicon baseline and the transformer figure is the **published**
+  ProsusAI/finbert range, cited as expected — **never** a fabricated measurement.
 
 ## References
 

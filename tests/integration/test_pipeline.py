@@ -140,11 +140,13 @@ def test_offline_pipeline_imports_nothing_heavy() -> None:
 def test_run_sentiment_backend_entrypoint_offline() -> None:
     """The backend ``run_sentiment`` entrypoint serves live and reports committed eval.
 
-    Uses the SHIPPED ``artifacts/metrics.json`` (no network) and the torch-free
-    lexicon served model (no ONNX artifact in this build). Asserts the honest
-    contract: eval scalars come from the committed metrics verbatim, the served
-    model is named, ``beats_lexicon`` is ``None`` on the lexicon-only build, and
-    the two evaluation figures are well-formed.
+    Uses the SHIPPED ``artifacts/metrics.json`` (no network). The served model is
+    whichever build shipped — the transformer-ONNX graph when its artifacts are
+    present, else the torch-free lexicon fallback. Asserts the honest contract that
+    holds for BOTH: eval scalars come from the committed metrics verbatim, the
+    served model is named, the baselines are ordered, the transformer
+    ``measured``/``beats_lexicon`` flags are mutually consistent, live predictions
+    are sign-correct on the clear cases, and the two figures are well-formed.
     """
     import json
 
@@ -156,23 +158,30 @@ def test_run_sentiment_backend_entrypoint_offline() -> None:
             "Losses widened as demand fell and the stock dropped.",
             "The annual general meeting will be held in May.",
         ],
-        model_pref="distilbert",  # falls back to lexicon (no ONNX artifact)
+        model_pref="distilbert",  # serves ONNX if present, else falls back to lexicon
         seed=20260618,
     )
     summary = result.summary
-    assert summary.served_model == "lexicon"
+    assert summary.served_model in {"distilbert-onnx", "lexicon"}
     assert summary.n_texts == 3
     # eval_macro_f1 is the committed locked-test-set value (NOT recomputed here).
     assert summary.eval_macro_f1 is not None and 0.0 <= summary.eval_macro_f1 <= 1.0
-    assert summary.lexicon_macro_f1 == summary.eval_macro_f1
     assert summary.class_prior_macro_f1 is not None
     # Lexicon clearly beats the trivial class-prior floor.
+    assert summary.lexicon_macro_f1 is not None
     assert summary.lexicon_macro_f1 > summary.class_prior_macro_f1
-    # No transformer trained -> nothing to compare, no fabricated F1.
-    assert summary.beats_lexicon is None
-    assert summary.transformer_measured is False
 
-    # Live predictions are sign-correct on the clear cases.
+    if summary.served_model == "lexicon":
+        # Lexicon fallback: the lexicon IS the served model; nothing to compare.
+        assert summary.lexicon_macro_f1 == summary.eval_macro_f1
+        assert summary.beats_lexicon is None
+        assert summary.transformer_measured is False
+    else:
+        # Transformer-ONNX build: a real, MEASURED verdict and figure.
+        assert summary.transformer_measured is True
+        assert isinstance(summary.beats_lexicon, bool)
+
+    # Live predictions are sign-correct on the clear cases (both backends agree here).
     labels = [p["label"] for p in result.predictions]
     assert labels == ["positive", "negative", "neutral"]
 
