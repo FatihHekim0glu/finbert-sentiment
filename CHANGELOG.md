@@ -22,7 +22,7 @@ macro-F1 honestly against class-prior and lexicon baselines.
   path), falling back to the lexicon automatically when no ONNX artifact exists.
 - **Measured evaluation on the locked test set** (453 deduplicated sentences):
   served macro-F1 **0.960** (95% CI [0.932, 0.982]), per-class F1
-  0.932 / 0.993 / 0.956, vs lexicon 0.653 and class-prior 0.254. McNemar vs the
+  0.932 / 0.993 / 0.956, vs lexicon 0.652 and class-prior 0.254. McNemar vs the
   lexicon p ≈ 1.9e-22 → `beats_lexicon: true` (`measured_in_this_build: true`).
   `metrics.json` regenerated accordingly.
 - Activated the `[train]`-gated tests (the end-to-end fine-tune + export and the

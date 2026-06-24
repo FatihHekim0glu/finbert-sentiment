@@ -25,7 +25,7 @@ committed verbatim in `src/finbert_sentiment/artifacts/metrics.json`:
 | Model (locked test set) | macro-F1 | note |
 | --- | --- | --- |
 | **DistilBERT fine-tune (served, ONNX int8)** | **0.960** (95% CI [0.932, 0.982]) | the live model, **measured here** |
-| Lexicon baseline | 0.653 (95% CI [0.594, 0.710]) | honest lexical floor |
+| Lexicon baseline | 0.652 (95% CI [0.594, 0.710]) | honest lexical floor |
 | Class-prior (majority) floor | 0.254 | trivial floor |
 
 The transformer was fine-tuned from `distilbert-base-uncased` (3 epochs, seed
@@ -38,7 +38,7 @@ large (Δmacro-F1 ≈ 0.31) and statistically unambiguous.
 
 Accuracy on the same fold is 0.976 — close to macro-F1 here because the fine-tune
 also learns the minority classes well; on the lexicon baseline accuracy (0.762) is
-*much higher* than its macro-F1 (0.653) precisely because the neutral class is
+*much higher* than its macro-F1 (0.652) precisely because the neutral class is
 ~61% of the data, which is exactly why **accuracy alone would be dishonest**.
 
 > The measured 0.960 sits above the ~0.85–0.90 commonly cited for FinBERT-class

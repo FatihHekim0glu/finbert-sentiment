@@ -16,7 +16,7 @@ A do-nothing classifier that predicts "neutral" for every sentence scores ~0.76
 negative sentence, which is the entire point of the task.
 
 The measured numbers make the trap concrete: the lexicon baseline scores **0.762
-accuracy** but only **0.653 macro-F1**, and the class-prior (majority) floor scores
+accuracy** but only **0.652 macro-F1**, and the class-prior (majority) floor scores
 high accuracy yet **0.254 macro-F1**. Reporting accuracy alone would let a weak
 model look strong simply by leaning on the majority class.
 
@@ -45,9 +45,9 @@ bespoke reimplementation that could quietly drift from the reference.
   served macro-F1 means the model genuinely separates all three classes (per-class
   F1 0.932 / 0.993 / 0.956).
 - **Positive.** The gap between accuracy and macro-F1 on the *lexicon* (0.762 vs
-  0.653) is itself reported, demonstrating exactly why accuracy alone would be
+  0.652) is itself reported, demonstrating exactly why accuracy alone would be
   dishonest.
-- **Positive.** Bootstrap CIs turn "0.960 beats 0.653" into "[0.932, 0.982] vs
+- **Positive.** Bootstrap CIs turn "0.960 beats 0.652" into "[0.932, 0.982] vs
   [0.594, 0.710]" — a quantified, non-overlapping margin.
 - **Cost.** macro-F1 is harsher than accuracy and harder to move, so improvements
   on the minority classes matter disproportionately. That is the intended

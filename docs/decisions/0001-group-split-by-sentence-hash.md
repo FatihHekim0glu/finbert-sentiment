@@ -46,7 +46,7 @@ hash** (`data/split.py::stratified_group_split`):
 
 ## Consequences
 
-- **Positive.** The headline macro-F1 (0.960 served, 0.653 lexicon) is measured on
+- **Positive.** The headline macro-F1 (0.960 served, 0.652 lexicon) is measured on
   a test fold that shares no sentence with training — the number is honest.
 - **Positive.** The leakage guard is a one-line, fast assertion that doubles as a
   regression tripwire: if a future refactor reintroduces row-level splitting, the

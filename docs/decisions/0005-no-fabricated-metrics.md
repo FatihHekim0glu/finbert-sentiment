@@ -45,7 +45,7 @@ fabricated.** This is enforced in three places:
    cited-as-published transformer range when not. The two cases are never blurred.
 
 In this build the result is unambiguous: served macro-F1 **0.960** (95% CI
-[0.932, 0.982]) vs lexicon **0.653**, McNemar **p ≈ 1.9e-22**, so
+[0.932, 0.982]) vs lexicon **0.652**, McNemar **p ≈ 1.9e-22**, so
 `beats_lexicon = true` (`verdict: model_beats_lexicon`) — and every one of those
 numbers is measured on the locked test fold.
 
